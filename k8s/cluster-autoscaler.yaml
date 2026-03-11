@@ -114,7 +114,7 @@ spec:
             - --balance-similar-node-groups=true
             # ── Node pools: min:max:ocid ──
             - "--nodes=0:3:<GPU_NODE_POOL_OCID>"
-            - "--nodes=2:5:<CPU_NODE_POOL_OCID>"
+            - "--nodes=1:3:<CPU_NODE_POOL_OCID>"
           env:
             - name: OKE_USE_INSTANCE_PRINCIPAL
               value: "true"

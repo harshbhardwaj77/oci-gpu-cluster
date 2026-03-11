@@ -1,6 +1,11 @@
 # ─────────────────────────────────────────────────────────────
-# GPU Dashboard App — Kubernetes Deployment
-# Deployed by install.sh onto GPU nodes via KEDA
+# GPU Dashboard App — No Registry Required
+#
+# Embeds the app code as ConfigMaps and uses a public Python
+# base image. No docker build, no container registry needed.
+#
+# The Dockerfile in gpu-app/ is kept for optional use if you
+# later want to build a proper image with a registry.
 # ─────────────────────────────────────────────────────────────
 
 apiVersion: v1
@@ -11,6 +16,324 @@ metadata:
     purpose: gpu-testing
 
 ---
+# ── ConfigMap: Python app code ──────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gpu-app-code
+  namespace: gpu-demo
+data:
+  app.py: |
+    import subprocess
+    import json
+    import platform
+    import os
+    import datetime
+
+    from http.server import HTTPServer, SimpleHTTPRequestHandler
+    import urllib.parse
+
+    # ── GPU + System Info ────────────────────────────────────
+    def get_gpu_info():
+        try:
+            result = subprocess.run(
+                ['nvidia-smi',
+                 '--query-gpu=name,driver_version,memory.total,memory.used,memory.free,utilization.gpu,temperature.gpu,power.draw',
+                 '--format=csv,noheader,nounits'],
+                capture_output=True, text=True, timeout=10
+            )
+            if result.returncode != 0:
+                return None
+            parts = [p.strip() for p in result.stdout.strip().split(',')]
+            return {
+                'name': parts[0], 'driver_version': parts[1],
+                'memory_total_mb': int(float(parts[2])),
+                'memory_used_mb': int(float(parts[3])),
+                'memory_free_mb': int(float(parts[4])),
+                'utilization_pct': int(float(parts[5])),
+                'temperature_c': int(float(parts[6])),
+                'power_draw_w': float(parts[7]),
+                'available': True,
+            }
+        except FileNotFoundError:
+            return None
+        except Exception as e:
+            return {'available': False, 'error': str(e)}
+
+    def get_system_info():
+        mem = {}
+        try:
+            with open('/proc/meminfo') as f:
+                for line in f:
+                    parts = line.split()
+                    if parts[0] in ('MemTotal:', 'MemAvailable:'):
+                        mem[parts[0][:-1]] = int(parts[1]) // 1024  # MB
+        except:
+            pass
+        total_mb = mem.get('MemTotal', 0)
+        avail_mb = mem.get('MemAvailable', 0)
+        used_mb = total_mb - avail_mb
+        try:
+            with open('/proc/cpuinfo') as f:
+                cpu_count = sum(1 for line in f if line.startswith('processor'))
+        except:
+            cpu_count = os.cpu_count() or 1
+        try:
+            with open('/proc/loadavg') as f:
+                load = f.read().split()[0]
+        except:
+            load = '0'
+        return {
+            'hostname': platform.node(),
+            'os': f"{platform.system()} {platform.release()}",
+            'cpu_count': cpu_count,
+            'cpu_percent': round(float(load) / cpu_count * 100, 1) if cpu_count else 0,
+            'memory_total_gb': round(total_mb / 1024, 1),
+            'memory_used_gb': round(used_mb / 1024, 1),
+            'memory_percent': round(used_mb / total_mb * 100, 1) if total_mb else 0,
+            'pod_name': os.environ.get('HOSTNAME', 'unknown'),
+            'node_name': os.environ.get('NODE_NAME', 'unknown'),
+            'namespace': os.environ.get('POD_NAMESPACE', 'unknown'),
+        }
+
+    # ── HTTP Handler ─────────────────────────────────────────
+    class Handler(SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory='/app/static', **kwargs)
+
+        def do_GET(self):
+            path = urllib.parse.urlparse(self.path).path
+
+            if path == '/' or path == '':
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/html')
+                self.end_headers()
+                with open('/app/static/index.html', 'rb') as f:
+                    self.wfile.write(f.read())
+
+            elif path == '/api/status':
+                gpu = get_gpu_info()
+                data = json.dumps({
+                    'timestamp': datetime.datetime.utcnow().isoformat() + 'Z',
+                    'gpu': gpu if gpu else {'available': False, 'error': 'nvidia-smi not found'},
+                    'system': get_system_info(),
+                })
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(data.encode())
+
+            elif path == '/health':
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(b'{"status":"healthy"}')
+
+            else:
+                super().do_GET()
+
+        def log_message(self, format, *args):
+            if '/health' not in args[0]:
+                super().log_message(format, *args)
+
+    if __name__ == '__main__':
+        print('GPU Dashboard starting on :8080...')
+        HTTPServer(('', 8080), Handler).serve_forever()
+
+---
+# ── ConfigMap: HTML ──────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gpu-app-html
+  namespace: gpu-demo
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>GPU Node Dashboard</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="/style.css">
+    </head>
+    <body>
+        <div class="app">
+            <header class="header">
+                <div class="header-left">
+                    <div class="logo">
+                        <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                            <rect width="32" height="32" rx="8" fill="url(#grad1)"/>
+                            <path d="M8 16L14 10L20 16L14 22Z" fill="white" opacity="0.9"/>
+                            <path d="M14 16L20 10L26 16L20 22Z" fill="white" opacity="0.6"/>
+                            <defs><linearGradient id="grad1" x1="0" y1="0" x2="32" y2="32">
+                                <stop stop-color="#76B900"/><stop offset="1" stop-color="#00A36C"/>
+                            </linearGradient></defs>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1>GPU Node Dashboard</h1>
+                        <p class="subtitle">OKE Cluster &bull; Scale-to-Zero GPU Monitoring</p>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <div class="status-badge" id="connectionBadge">
+                        <span class="pulse"></span>
+                        <span id="connectionText">Connecting...</span>
+                    </div>
+                </div>
+            </header>
+
+            <section class="card gpu-card" id="gpuCard">
+                <div class="card-header">
+                    <h2>&#127918; GPU Status</h2>
+                    <span class="chip" id="gpuChip">Checking...</span>
+                </div>
+                <div class="gpu-content" id="gpuContent">
+                    <div class="loading-state" id="gpuLoading">
+                        <div class="spinner"></div>
+                        <p>Detecting GPU...</p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card">
+                <div class="card-header"><h2>&#128421; System Info</h2></div>
+                <div class="system-grid" id="systemGrid">
+                    <div class="loading-state"><div class="spinner"></div><p>Loading...</p></div>
+                </div>
+            </section>
+
+            <section class="card">
+                <div class="card-header"><h2>&#9784; Kubernetes</h2></div>
+                <div class="k8s-grid" id="k8sGrid">
+                    <div class="loading-state"><div class="spinner"></div></div>
+                </div>
+            </section>
+
+            <footer class="footer">
+                <span id="lastUpdated">Last updated: &mdash;</span>
+                <button class="refresh-btn" onclick="fetchStatus()">&#8635; Refresh</button>
+            </footer>
+        </div>
+        <script src="/app.js"></script>
+    </body>
+    </html>
+
+---
+# ── ConfigMap: CSS ───────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gpu-app-css
+  namespace: gpu-demo
+data:
+  style.css: |
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+    :root{--bg:#0a0e17;--surface:#121926;--surface-2:#1a2332;--border:#1e2d3d;--text:#e2e8f0;--text-muted:#8899aa;--accent:#76B900;--accent-glow:rgba(118,185,0,0.15);--red:#ef4444;--amber:#f59e0b;--blue:#3b82f6;--radius:12px}
+    body{font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+    .app{max-width:800px;margin:0 auto;padding:24px 20px 48px}
+    .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:28px;padding-bottom:20px;border-bottom:1px solid var(--border)}
+    .header-left{display:flex;align-items:center;gap:14px}
+    .header h1{font-size:1.35rem;font-weight:700;letter-spacing:-0.02em}
+    .subtitle{font-size:0.78rem;color:var(--text-muted);margin-top:2px}
+    .status-badge{display:flex;align-items:center;gap:8px;padding:6px 14px;background:var(--surface);border:1px solid var(--border);border-radius:20px;font-size:0.75rem;font-weight:500;color:var(--text-muted)}
+    .status-badge.online{border-color:var(--accent);color:var(--accent)}
+    .status-badge.offline{border-color:var(--red);color:var(--red)}
+    .pulse{width:8px;height:8px;border-radius:50%;background:var(--text-muted)}
+    .status-badge.online .pulse{background:var(--accent);animation:pulse-glow 2s ease-in-out infinite}
+    .status-badge.offline .pulse{background:var(--red)}
+    @keyframes pulse-glow{0%,100%{box-shadow:0 0 0 0 rgba(118,185,0,0.4)}50%{box-shadow:0 0 0 6px rgba(118,185,0,0)}}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:22px;margin-bottom:16px;transition:border-color 0.3s ease}
+    .card:hover{border-color:#2a3a4a}
+    .card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+    .card-header h2{font-size:1rem;font-weight:600}
+    .chip{padding:4px 12px;border-radius:16px;font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em}
+    .chip.online{background:var(--accent-glow);color:var(--accent)}
+    .chip.offline{background:rgba(239,68,68,0.12);color:var(--red)}
+    .gpu-card.has-gpu{border-color:rgba(118,185,0,0.3);background:linear-gradient(135deg,var(--surface) 0%,rgba(118,185,0,0.03) 100%)}
+    .gpu-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px}
+    .stat-box{background:var(--surface-2);border-radius:10px;padding:16px;text-align:center}
+    .stat-label{font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px}
+    .stat-value{font-family:'JetBrains Mono',monospace;font-size:1.4rem;font-weight:600}
+    .stat-unit{font-size:0.75rem;color:var(--text-muted);margin-left:2px}
+    .stat-value.green{color:var(--accent)}.stat-value.amber{color:var(--amber)}.stat-value.red{color:var(--red)}.stat-value.blue{color:var(--blue)}
+    .gpu-name{font-family:'JetBrains Mono',monospace;font-size:0.95rem;font-weight:500;color:var(--accent);margin-bottom:16px;padding:10px 14px;background:var(--surface-2);border-radius:8px;display:flex;align-items:center;gap:10px}
+    .memory-bar-container{margin-bottom:18px}
+    .memory-bar-label{display:flex;justify-content:space-between;font-size:0.72rem;color:var(--text-muted);margin-bottom:6px}
+    .memory-bar{height:10px;background:var(--surface-2);border-radius:5px;overflow:hidden}
+    .memory-bar-fill{height:100%;border-radius:5px;background:linear-gradient(90deg,var(--accent),#00d68f);transition:width 0.6s ease}
+    .memory-bar-fill.high{background:linear-gradient(90deg,var(--amber),var(--red))}
+    .system-grid,.k8s-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+    .info-item{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--surface-2);border-radius:8px;font-size:0.82rem}
+    .info-item .label{color:var(--text-muted)}
+    .info-item .value{font-family:'JetBrains Mono',monospace;font-weight:500;font-size:0.78rem;text-align:right;max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .no-gpu{text-align:center;padding:32px 16px}
+    .no-gpu .icon{font-size:2.5rem;margin-bottom:12px;opacity:0.5}
+    .no-gpu h3{font-size:1rem;font-weight:600;margin-bottom:6px;color:var(--text-muted)}
+    .no-gpu p{font-size:0.8rem;color:var(--text-muted);opacity:0.7}
+    .loading-state{display:flex;flex-direction:column;align-items:center;gap:12px;padding:28px;color:var(--text-muted);font-size:0.85rem}
+    .spinner{width:28px;height:28px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .footer{display:flex;justify-content:space-between;align-items:center;padding-top:12px;font-size:0.72rem;color:var(--text-muted)}
+    .refresh-btn{background:var(--surface);border:1px solid var(--border);color:var(--text-muted);padding:6px 14px;border-radius:8px;font-size:0.75rem;font-family:inherit;cursor:pointer;transition:all 0.2s}
+    .refresh-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-glow)}
+    @media(max-width:600px){.app{padding:16px 12px 32px}.header{flex-direction:column;gap:12px;align-items:flex-start}.gpu-stats{grid-template-columns:repeat(2,1fr)}.system-grid,.k8s-grid{grid-template-columns:1fr}}
+
+---
+# ── ConfigMap: JavaScript ────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gpu-app-js
+  namespace: gpu-demo
+data:
+  app.js: |
+    const POLL_INTERVAL=5000;
+    async function fetchStatus(){
+      try{
+        const res=await fetch('/api/status');
+        if(!res.ok)throw new Error('HTTP '+res.status);
+        const data=await res.json();
+        renderGPU(data.gpu);renderSystem(data.system);renderK8s(data.system);
+        updateConnection(true);updateTimestamp(data.timestamp);
+      }catch(err){console.error(err);updateConnection(false)}
+    }
+    function renderGPU(gpu){
+      const card=document.getElementById('gpuCard'),content=document.getElementById('gpuContent'),chip=document.getElementById('gpuChip');
+      if(!gpu||!gpu.available){card.classList.remove('has-gpu');chip.textContent='Not Detected';chip.className='chip offline';
+        content.innerHTML='<div class="no-gpu"><div class="icon">&#128268;</div><h3>No GPU Detected</h3><p>This pod is not running on a GPU node, or NVIDIA drivers are not installed yet.</p></div>';return}
+      card.classList.add('has-gpu');chip.textContent='Online';chip.className='chip online';
+      const memPct=Math.round(gpu.memory_used_mb/gpu.memory_total_mb*100),memBarClass=memPct>80?'high':'',
+        utilColor=gpu.utilization_pct>80?'red':gpu.utilization_pct>40?'amber':'green',
+        tempColor=gpu.temperature_c>80?'red':gpu.temperature_c>60?'amber':'green';
+      content.innerHTML=`<div class="gpu-name"><span class="icon">&#9889;</span>${gpu.name} &nbsp;&bull;&nbsp; Driver ${gpu.driver_version}</div>
+        <div class="memory-bar-container"><div class="memory-bar-label"><span>VRAM Usage</span><span>${gpu.memory_used_mb} / ${gpu.memory_total_mb} MB (${memPct}%)</span></div>
+        <div class="memory-bar"><div class="memory-bar-fill ${memBarClass}" style="width:${memPct}%"></div></div></div>
+        <div class="gpu-stats">
+        <div class="stat-box"><div class="stat-label">GPU Utilization</div><div class="stat-value ${utilColor}">${gpu.utilization_pct}<span class="stat-unit">%</span></div></div>
+        <div class="stat-box"><div class="stat-label">Temperature</div><div class="stat-value ${tempColor}">${gpu.temperature_c}<span class="stat-unit">&deg;C</span></div></div>
+        <div class="stat-box"><div class="stat-label">Memory Free</div><div class="stat-value blue">${gpu.memory_free_mb}<span class="stat-unit">MB</span></div></div>
+        <div class="stat-box"><div class="stat-label">Power Draw</div><div class="stat-value">${gpu.power_draw_w}<span class="stat-unit">W</span></div></div></div>`;
+    }
+    function renderSystem(s){document.getElementById('systemGrid').innerHTML=`
+      <div class="info-item"><span class="label">Hostname</span><span class="value">${s.hostname}</span></div>
+      <div class="info-item"><span class="label">OS</span><span class="value">${s.os}</span></div>
+      <div class="info-item"><span class="label">CPUs</span><span class="value">${s.cpu_count} cores &bull; ${s.cpu_percent}%</span></div>
+      <div class="info-item"><span class="label">Memory</span><span class="value">${s.memory_used_gb}/${s.memory_total_gb} GB (${s.memory_percent}%)</span></div>`}
+    function renderK8s(s){document.getElementById('k8sGrid').innerHTML=`
+      <div class="info-item"><span class="label">Pod</span><span class="value">${s.pod_name}</span></div>
+      <div class="info-item"><span class="label">Node</span><span class="value">${s.node_name}</span></div>
+      <div class="info-item"><span class="label">Namespace</span><span class="value">${s.namespace}</span></div>`}
+    function updateConnection(on){const b=document.getElementById('connectionBadge'),t=document.getElementById('connectionText');
+      b.className='status-badge '+(on?'online':'offline');t.textContent=on?'Connected':'Disconnected'}
+    function updateTimestamp(ts){document.getElementById('lastUpdated').textContent='Last updated: '+new Date(ts).toLocaleTimeString()}
+    fetchStatus();setInterval(fetchStatus,POLL_INTERVAL);
+
+---
+# ── Deployment ───────────────────────────────────────────────
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -36,7 +359,8 @@ spec:
           effect: NoSchedule
       containers:
         - name: dashboard
-          image: GPU_APP_IMAGE_PLACEHOLDER
+          image: python:3.11-slim          # ← Public image, no registry needed
+          command: ["python", "/app/app.py"]
           ports:
             - containerPort: 8080
               name: http
@@ -53,25 +377,52 @@ spec:
             requests:
               nvidia.com/gpu: 1
               cpu: "500m"
-              memory: "1Gi"
+              memory: "512Mi"
             limits:
               nvidia.com/gpu: 1
               cpu: "2"
-              memory: "2Gi"
+              memory: "1Gi"
+          volumeMounts:
+            - name: app-code
+              mountPath: /app/app.py
+              subPath: app.py
+            - name: app-html
+              mountPath: /app/static/index.html
+              subPath: index.html
+            - name: app-css
+              mountPath: /app/static/style.css
+              subPath: style.css
+            - name: app-js
+              mountPath: /app/static/app.js
+              subPath: app.js
           readinessProbe:
             httpGet:
               path: /health
               port: 8080
-            initialDelaySeconds: 5
+            initialDelaySeconds: 3
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /health
               port: 8080
-            initialDelaySeconds: 10
+            initialDelaySeconds: 5
             periodSeconds: 30
+      volumes:
+        - name: app-code
+          configMap:
+            name: gpu-app-code
+        - name: app-html
+          configMap:
+            name: gpu-app-html
+        - name: app-css
+          configMap:
+            name: gpu-app-css
+        - name: app-js
+          configMap:
+            name: gpu-app-js
 
 ---
+# ── Service ──────────────────────────────────────────────────
 apiVersion: v1
 kind: Service
 metadata:
@@ -86,7 +437,7 @@ spec:
       targetPort: 8080
 
 ---
-# KEDA HTTP Scaled Object — routes domain traffic, scales 0→N
+# ── KEDA HTTP Scaled Object ──────────────────────────────────
 apiVersion: http.keda.sh/v1alpha1
 kind: HTTPScaledObject
 metadata:
@@ -103,4 +454,4 @@ spec:
   replicas:
     min: 0
     max: 2
-  scaledownPeriod: 300    # 5 min idle → scale to 0
+  scaledownPeriod: 300

@@ -9,7 +9,7 @@
 #   3. DCGM exporter running (installed by GPU Operator)
 #
 # Prometheus Adapter config must map DCGM_FI_DEV_GPU_UTIL
-# to the custom metrics API. See setup.sh for helm commands.
+# to the custom metrics API. See install.sh for helm commands.
 #
 # ─────────────────────────────────────────────────────────────
 
