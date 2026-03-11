@@ -1,0 +1,24 @@
+# ─────────────────────────────────────────────────────────────
+# Basic GPU Test — runs nvidia-smi to verify GPU access
+# This triggers the Cluster Autoscaler to provision a GPU node
+# ─────────────────────────────────────────────────────────────
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gpu-test
+  namespace: default
+spec:
+  template:
+    spec:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      containers:
+        - name: cuda-test
+          image: nvidia/cuda:12.3.2-base-ubuntu22.04
+          command: ["nvidia-smi"]
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+      restartPolicy: Never
+  backoffLimit: 0

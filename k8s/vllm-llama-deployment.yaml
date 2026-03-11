@@ -1,0 +1,174 @@
+# ─────────────────────────────────────────────────────────────
+# vLLM + Llama 3.1 8B Deployment
+# Serves an OpenAI-compatible API on GPU nodes
+# ─────────────────────────────────────────────────────────────
+#
+# BEFORE APPLYING: Replace <YOUR_HUGGING_FACE_TOKEN> with a
+# valid HF token that has access to meta-llama models.
+#
+# ─────────────────────────────────────────────────────────────
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: llm-inference
+  labels:
+    purpose: gpu-inference
+
+---
+# Hugging Face token (needed for gated models like Llama)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hf-token
+  namespace: llm-inference
+type: Opaque
+stringData:
+  token: "<YOUR_HUGGING_FACE_TOKEN>"
+
+---
+# Persistent storage to cache model weights across restarts
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-cache
+  namespace: llm-inference
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: oci-bv    # OCI Block Volume storage class
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-llama
+  namespace: llm-inference
+  labels:
+    app: vllm-llama
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-llama
+  template:
+    metadata:
+      labels:
+        app: vllm-llama
+    spec:
+      # Schedule ONLY on GPU nodes
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+
+      # Ensure GPU Operator has time to install drivers on fresh nodes
+      initContainers:
+        - name: wait-for-gpu
+          image: nvidia/cuda:12.3.2-base-ubuntu22.04
+          command: ["sh", "-c"]
+          args:
+            - |
+              echo "Waiting for NVIDIA GPU to be ready..."
+              until nvidia-smi > /dev/null 2>&1; do
+                echo "GPU not ready yet, retrying in 10s..."
+                sleep 10
+              done
+              echo "GPU is ready!"
+              nvidia-smi
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:latest
+          args:
+            - "--model"
+            - "meta-llama/Llama-3.1-8B-Instruct"
+            - "--max-model-len"
+            - "4096"
+            - "--gpu-memory-utilization"
+            - "0.9"
+            - "--dtype"
+            - "auto"
+            - "--port"
+            - "8000"
+            - "--trust-remote-code"
+          ports:
+            - containerPort: 8000
+              name: http
+              protocol: TCP
+          env:
+            - name: HUGGING_FACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-token
+                  key: token
+            - name: HF_HOME
+              value: /model-cache
+            - name: TRANSFORMERS_CACHE
+              value: /model-cache
+          resources:
+            requests:
+              nvidia.com/gpu: 1
+              cpu: "4"
+              memory: "16Gi"
+            limits:
+              nvidia.com/gpu: 1
+              cpu: "8"
+              memory: "24Gi"
+          volumeMounts:
+            - name: model-cache
+              mountPath: /model-cache
+            - name: shm
+              mountPath: /dev/shm
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 180   # Model loading takes time
+            periodSeconds: 15
+            failureThreshold: 20
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 300
+            periodSeconds: 30
+            failureThreshold: 5
+
+      volumes:
+        - name: model-cache
+          persistentVolumeClaim:
+            claimName: model-cache
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Gi          # vLLM uses shared memory
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-llama
+  namespace: llm-inference
+  annotations:
+    oci.oraclecloud.com/load-balancer-type: "lb"
+    service.beta.kubernetes.io/oci-load-balancer-shape: "flexible"
+    service.beta.kubernetes.io/oci-load-balancer-shape-flex-min: "10"
+    service.beta.kubernetes.io/oci-load-balancer-shape-flex-max: "100"
+spec:
+  type: LoadBalancer
+  selector:
+    app: vllm-llama
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
+      protocol: TCP

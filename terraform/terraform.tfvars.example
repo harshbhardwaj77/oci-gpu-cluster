@@ -1,0 +1,31 @@
+# ─────────────────────────────────────────────────────────────
+# Copy this file to terraform.tfvars and fill in your values
+# ─────────────────────────────────────────────────────────────
+
+region         = "us-ashburn-1"
+compartment_id = "ocid1.compartment.oc1..aaaa_REPLACE_ME"
+vcn_id         = "ocid1.vcn.oc1..aaaa_REPLACE_ME"
+
+k8s_endpoint_subnet_id = "ocid1.subnet.oc1..aaaa_REPLACE_ME"  # Public subnet for K8s API
+node_subnet_id         = "ocid1.subnet.oc1..aaaa_REPLACE_ME"  # Private subnet for workers
+service_lb_subnet_id   = "ocid1.subnet.oc1..aaaa_REPLACE_ME"  # Public subnet for LBs
+
+ssh_public_key = "ssh-rsa AAAA_REPLACE_ME"
+
+# Kubernetes version
+k8s_version = "v1.30.1"
+
+# CPU pool (system workloads)
+cpu_node_shape      = "VM.Standard.E4.Flex"
+cpu_node_ocpus      = 1       # Minimal — just runs autoscaler + GPU operator
+cpu_node_memory_gbs = 8       # 8 GB is sufficient for system pods
+cpu_pool_size       = 1       # Single node is enough
+
+# GPU pool (scale-to-zero inference)
+gpu_node_shape   = "VM.GPU.A10.1"   # 1× NVIDIA A10 (24 GB VRAM)
+gpu_pool_min_size = 0                # Start with zero GPU nodes
+gpu_pool_max_size = 3                # Max GPU nodes autoscaler can create
+
+# Optional: specify exact image OCIDs (leave empty for auto-select)
+# gpu_node_image_id = "ocid1.image.oc1..aaaa_GPU_IMAGE"
+# cpu_node_image_id = "ocid1.image.oc1..aaaa_CPU_IMAGE"

@@ -1,0 +1,106 @@
+# ─────────────────────────────────────────────────────────────
+# GPU Dashboard App — Kubernetes Deployment
+# Deployed by install.sh onto GPU nodes via KEDA
+# ─────────────────────────────────────────────────────────────
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gpu-demo
+  labels:
+    purpose: gpu-testing
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gpu-dashboard
+  namespace: gpu-demo
+  labels:
+    app: gpu-dashboard
+spec:
+  replicas: 0    # KEDA manages this — starts at zero
+  selector:
+    matchLabels:
+      app: gpu-dashboard
+  template:
+    metadata:
+      labels:
+        app: gpu-dashboard
+    spec:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: dashboard
+          image: GPU_APP_IMAGE_PLACEHOLDER
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              nvidia.com/gpu: 1
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              nvidia.com/gpu: 1
+              cpu: "2"
+              memory: "2Gi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gpu-dashboard
+  namespace: gpu-demo
+spec:
+  selector:
+    app: gpu-dashboard
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+
+---
+# KEDA HTTP Scaled Object — routes domain traffic, scales 0→N
+apiVersion: http.keda.sh/v1alpha1
+kind: HTTPScaledObject
+metadata:
+  name: gpu-dashboard-scaler
+  namespace: gpu-demo
+spec:
+  hosts:
+    - "GPU_DOMAIN_PLACEHOLDER"
+  targetPendingRequests: 1
+  scaleTargetRef:
+    name: gpu-dashboard
+    service: gpu-dashboard
+    port: 8080
+  replicas:
+    min: 0
+    max: 2
+  scaledownPeriod: 300    # 5 min idle → scale to 0
