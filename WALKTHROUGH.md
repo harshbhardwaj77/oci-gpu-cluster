@@ -1,6 +1,6 @@
-# OCI Console Walkthrough — Setting Up GPU Kubernetes Cluster
+# OCI Console Walkthrough — GPU Kubernetes Cluster (Scale-to-Zero)
 
-Step-by-step guide using the **OCI Console UI** to create an OKE cluster with GPU nodes that scale to zero.
+Step-by-step guide using the **OCI Console UI** to create an OKE cluster with GPU nodes that scale to zero. This uses the **Quick Create** wizard, which automatically sets up the VCN, subnets, security lists, and internet gateway for you.
 
 ---
 
@@ -8,116 +8,205 @@ Step-by-step guide using the **OCI Console UI** to create an OKE cluster with GP
 
 1. Log into [cloud.oracle.com](https://cloud.oracle.com)
 2. Click **☰ Menu** → **Developer Services** → **Kubernetes Clusters (OKE)**
-3. Select your **Compartment** from the left sidebar
+3. Select your **Compartment** from the left sidebar (e.g., `prod`)
 
-## Step 2: Create the Cluster
+## Step 2: Create the Cluster (Quick Create)
 
 1. Click **"Create cluster"**
-2. Choose **"Custom create"** → Click **"Next"**
-3. Fill in:
+2. Select **"Quick create"** → Click **"Submit"**
+
+### Cluster Configuration
 
 | Field | Value |
 |---|---|
 | Name | `llama-gpu-cluster` |
-| Compartment | Your compartment |
-| Kubernetes version | `v1.30.1` (or latest) |
-
-4. Click **"Next"**
-
-## Step 3: Network Setup
-
-| Field | Value |
-|---|---|
-| VCN | Select existing or create new |
-| K8s API endpoint subnet | Public subnet |
-| Service LB subnet | Public subnet |
-
-Click **"Next"**
-
-## Step 4: Create CPU Node Pool
-
-This tiny node runs the autoscaler and KEDA. It's always on (~$25/mo).
-
-| Field | Value |
-|---|---|
-| Node pool name | `cpu-system-pool` |
-| Node type | Managed |
-| Shape | `VM.Standard.E4.Flex` |
-| OCPUs | `1` |
-| Memory | `8 GB` |
+| Compartment | Your compartment (e.g., `prod`) |
+| Kubernetes version | `v1.34.2` (or latest available) |
+| Kubernetes API endpoint | **Public endpoint** |
+| Kubernetes worker nodes | **Private workers** |
+| Pod shape | `VM.Standard.E4.Flex` |
+| Number of OCPUs per node | `1` |
+| Amount of memory (GB) | `8` |
 | Number of nodes | `1` |
-| Image | Oracle Linux 8 |
 
-Add label: `workload-type` = `system`
+### Add-ons & Plugins
 
-Click **"Next"** → **"Create cluster"** → Wait ~5-10 min
-
-## Step 5: Add GPU Node Pool
-
-Once cluster is **Active**:
-
-1. Click cluster name → **"Node pools"** tab → **"Add node pool"**
-
-| Field | Value |
+| Add-on | Recommendation |
 |---|---|
-| Node pool name | `gpu-inference-pool` |
-| Shape | `VM.GPU.A10.1` |
-| **Number of nodes** | **`0`** |
-| Image | Oracle Linux **GPU** image |
+| CoreDNS | ✅ Keep enabled (required) |
+| KubeProxy | ✅ Keep enabled (required) |
+| Kubernetes Dashboard | ❌ Disable (security risk, use `kubectl` instead) |
 
-Add labels:
-- `nvidia.com/gpu.present` = `true`
-- `workload-type` = `gpu-inference`
+### Important Prompts
 
-Click **"Add"**
+- **"Basic Cluster Confirmation"** dialog: ✅ Check **"Create a Basic cluster"** and click **Continue**. The Basic cluster is free. Enhanced costs ~$74/month and is not needed for this setup.
 
-> **Can't see GPU shapes?** Request quota at: **☰ → Governance → Limits** → search `gpu`
+3. Click **"Create cluster"** → Wait ~5-10 minutes for the cluster to become **Active**
 
-## Step 6: Configure kubectl
+> **What Quick Create does for you automatically:**
+> - Creates a VCN with public and private subnets
+> - Sets up security lists, route tables, and an internet gateway
+> - Creates a NAT gateway for private worker nodes
+> - Configures the Kubernetes API endpoint (public access)
+> - Creates 1 CPU node pool with the shape you selected
 
-1. Click **"Access Cluster"** on your cluster page
-2. Copy and run the kubeconfig command:
+## Step 3: Request GPU Quota (if needed)
+
+Most OCI accounts have GPU limits set to `0` by default. You need to request access before creating a GPU node pool.
+
+1. Click **☰ Menu** → **Governance & Administration** → **Limits, Quotas and Usage**
+2. Set **Service** = `Compute`, **Scope** = your Availability Domain
+3. Type `GPU` in the filter box
+4. Find the row: **"GPUs for GPU.A10 based VM and BM Instances"** (`gpu-a10-count`)
+5. Click the `...` on the right → **"Request a service limit increase"**
+6. Set the limit to `2` and provide a business reason
+7. Submit — Oracle typically responds within a few hours
+
+> **Tip:** Once you receive a reply asking to confirm the shape, respond with:
+> "VM.GPU.A10.1 — 2 instances for AI inference workloads on OKE."
+
+## Step 4: Configure kubectl
+
+Once the cluster shows **Active** status:
+
+1. Click your cluster name → Click **"Access Cluster"** button
+2. Select **"Cloud Shell Access"** (easiest) or **"Local Access"**
+3. Copy and run the kubeconfig command:
 
 ```bash
 oci ce cluster create-kubeconfig \
   --cluster-id <CLUSTER_OCID> \
   --file $HOME/.kube/config \
   --region <REGION> \
-  --token-version 2.0.0
+  --token-version 2.0.0 \
+  --kube-endpoint PUBLIC_ENDPOINT
 ```
 
-3. Verify: `kubectl get nodes` — should show 1 CPU node
+4. Verify: `kubectl get nodes` — should show 1 CPU node in `Ready` state
 
-## Step 7: Run install.sh
+## Step 5: Run the Install Script
 
 ```bash
+git clone https://github.com/harshbhardwaj77/oci-gpu-cluster.git
+cd oci-gpu-cluster
 chmod +x install.sh
 ./install.sh
 ```
 
-This installs GPU Operator, Cluster Autoscaler, KEDA, and deploys the dashboard.
+The script will ask for:
+- **GPU Node Pool OCID** — enter `dummy` if GPU pool isn't created yet
+- **CPU Node Pool OCID** — find at: Cluster → Node Pools → `pool1` → Copy OCID
+- **Domain** — e.g., `gpu.yourdomain.com` (or press Enter for `gpu-app.local`)
 
-## Step 8: Set Up DNS
+The script installs:
+1. ✅ NVIDIA GPU Operator (auto-installs drivers on GPU nodes)
+2. ✅ Cluster Autoscaler (scales GPU pool 0 → 3 nodes)
+3. ✅ KEDA + HTTP Add-on (request-driven pod scaling + LoadBalancer)
+4. ✅ GPU Dashboard app via ConfigMaps (zero Docker build needed)
 
-After install.sh completes, it will show you the KEDA interceptor IP. Create a DNS record:
+## Step 6: Add GPU Node Pool (after quota is approved)
+
+Once Oracle approves your GPU quota:
+
+1. Go to your cluster → **"Node pools"** tab → **"Add node pool"**
+
+| Field | Value |
+|---|---|
+| Node pool name | `gpu-pool` |
+| Shape | `VM.GPU.A10.1` |
+| **Number of nodes** | **`0`** (critical for scale-to-zero!) |
+| Image | Oracle Linux **GPU** image |
+
+2. Click **"Add"** and copy the new pool's **OCID**
+
+3. Update the Cluster Autoscaler with the real GPU pool OCID:
+
+```bash
+kubectl edit deployment cluster-autoscaler -n kube-system
+# Find the --nodes=0:3:<OLD_OCID> line and replace with the real GPU pool OCID
+```
+
+## Step 7: Set Up DNS
+
+Get the public IP of the KEDA load balancer:
+
+```bash
+kubectl get svc keda-add-ons-http-interceptor-proxy -n keda
+```
+
+Create a DNS **A Record** at your DNS provider (e.g., Cloudflare):
 
 ```
-gpu-app.example.com  →  <INTERCEPTOR_IP>
+gpu.yourdomain.com  →  <EXTERNAL-IP from above>
 ```
 
-## How Requests Flow
+## How It Works
 
 ```
-Your app → gpu-app.example.com → KEDA Interceptor (CPU node)
-                                      │
-                            No GPU pod? Buffer request
-                            Scale deployment 0 → 1
-                            Cluster Autoscaler → GPU node (~5-8 min)
-                            GPU Operator → install drivers
-                            Pod ready → forward request → response
-                                      │
-                            5 min idle → scale back to 0
+User visits gpu.yourdomain.com
+         │
+         ▼
+┌─────────────────────────────┐
+│  OCI Load Balancer (Free)   │
+│  Points to KEDA Interceptor │
+└──────────┬──────────────────┘
+           │
+           ▼
+┌─────────────────────────────┐
+│  KEDA HTTP Interceptor      │  ← Always running on CPU node (~$25/mo)
+│  Holds request, scales pod  │
+└──────────┬──────────────────┘
+           │
+  No GPU pod? → Scale 0 → 1
+  No GPU node? → Cluster Autoscaler → OCI provisions VM.GPU.A10.1
+  GPU Operator → installs NVIDIA drivers
+  Pod starts → serves request
+           │
+           ▼
+┌─────────────────────────────┐
+│  GPU Dashboard Pod          │  ← Only runs when needed
+│  NVIDIA A10 (24GB VRAM)     │
+│  Shows GPU stats + system   │
+└─────────────────────────────┘
+           │
+  5 min idle → pod scales to 0
+  GPU node deprovisioned → cost = $0
 ```
 
-**First request after idle: ~5-10 min** (GPU node provisioning).
-**Subsequent requests: instant** while pod is running.
+## Timing
+
+| Event | Duration |
+|---|---|
+| First request after idle (cold start) | ~5-10 min |
+| Subsequent requests while pod is running | Instant |
+| Scale-down after idle | 5 min (configurable) |
+
+## Cost Summary
+
+| Component | Always Running? | Cost |
+|---|---|---|
+| CPU node (1× 1-OCPU E4.Flex) | ✅ 24/7 | ~$25/mo |
+| GPU node (VM.GPU.A10.1) | ❌ On demand | ~$1.60/hr |
+| OKE Control Plane (Basic) | ✅ Managed | Free |
+| OCI Load Balancer | ✅ 24/7 | Free (Always Free tier) |
+
+**With scale-to-zero, GPU costs are only incurred during active usage.**
+
+## Useful Commands
+
+```bash
+# Check nodes
+kubectl get nodes
+
+# Watch GPU app pods
+kubectl get pods -n gpu-demo -w
+
+# Check autoscaler logs
+kubectl logs -n kube-system -l app=cluster-autoscaler --tail=50
+
+# Check KEDA status
+kubectl get httpscaledobject -n gpu-demo
+
+# Get load balancer IP
+kubectl get svc keda-add-ons-http-interceptor-proxy -n keda
+```
