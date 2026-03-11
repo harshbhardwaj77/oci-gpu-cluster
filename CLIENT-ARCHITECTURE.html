@@ -387,78 +387,154 @@
       <span class="section-number">3</span>
       <h2>How a Request Flows Through the System</h2>
 
-      <!-- Visual Flowchart -->
-      <div style="margin-top:20px; text-align:center;">
+      <svg viewBox="0 0 800 720" xmlns="http://www.w3.org/2000/svg" style="width:100%; max-width:800px; margin:20px auto; display:block; font-family:Inter,sans-serif;">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-auto">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#764ba2"/>
+          </marker>
+          <marker id="arrow-orange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-auto">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#e67e22"/>
+          </marker>
+          <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-auto">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#27ae60"/>
+          </marker>
+          <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-auto">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#e53935"/>
+          </marker>
+          <linearGradient id="heroGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" style="stop-color:#667eea"/>
+            <stop offset="100%" style="stop-color:#764ba2"/>
+          </linearGradient>
+          <linearGradient id="gpuGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#d4f5e0"/>
+            <stop offset="100%" style="stop-color:#a8e6cf"/>
+          </linearGradient>
+          <filter id="shadow" x="-4%" y="-4%" width="108%" height="112%">
+            <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.1"/>
+          </filter>
+        </defs>
 
-        <!-- User Request -->
-        <div style="display:inline-block; background:linear-gradient(135deg,#667eea,#764ba2); color:#fff; padding:14px 32px; border-radius:12px; font-weight:600; font-size:15px;">
-          ① User sends request to gpu.yourdomain.com
-        </div>
-        <div style="text-align:center; color:#764ba2; font-size:24px; line-height:1;">▼</div>
+        <!-- ===== INTERNET ZONE ===== -->
+        <rect x="250" y="10" width="300" height="52" rx="26" fill="url(#heroGrad)" filter="url(#shadow)"/>
+        <text x="400" y="33" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">👤  User sends request</text>
+        <text x="400" y="48" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="10">gpu.yourdomain.com</text>
+
+        <!-- Arrow 1 -->
+        <line x1="400" y1="62" x2="400" y2="88" stroke="#764ba2" stroke-width="2" marker-end="url(#arrow)"/>
 
         <!-- Load Balancer -->
-        <div style="display:inline-block; background:#f0eef5; border:2px solid #d8d5e4; padding:12px 28px; border-radius:10px; margin:4px 0;">
-          <strong style="color:#302b63;">② OCI Load Balancer</strong><br>
-          <span style="font-size:13px; color:#666;">Routes traffic into Kubernetes cluster</span>
-        </div>
-        <div style="text-align:center; color:#764ba2; font-size:24px; line-height:1;">▼</div>
+        <rect x="280" y="90" width="240" height="44" rx="8" fill="#f0eef5" stroke="#d8d5e4" stroke-width="1.5" filter="url(#shadow)"/>
+        <text x="400" y="109" text-anchor="middle" fill="#302b63" font-size="12" font-weight="600">🌐  OCI Load Balancer</text>
+        <text x="400" y="124" text-anchor="middle" fill="#888" font-size="9">Routes traffic into cluster</text>
+
+        <!-- Arrow 2 -->
+        <line x1="400" y1="134" x2="400" y2="160" stroke="#764ba2" stroke-width="2" marker-end="url(#arrow)"/>
+
+        <!-- ===== CPU NODE ZONE ===== -->
+        <rect x="40" y="155" width="720" height="210" rx="12" fill="none" stroke="#764ba2" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.5"/>
+        <rect x="50" y="147" width="120" height="20" rx="4" fill="#764ba2"/>
+        <text x="110" y="161" text-anchor="middle" fill="#fff" font-size="10" font-weight="600">🖥️  CPU NODE</text>
+        <text x="170" y="161" fill="#764ba2" font-size="9" font-weight="500">  ~$27/mo always on</text>
 
         <!-- KEDA Interceptor -->
-        <div style="display:inline-block; background:#e8e5f0; border:2px solid #764ba2; padding:14px 28px; border-radius:10px; margin:4px 0;">
-          <strong style="color:#302b63;">③ KEDA HTTP Interceptor</strong> <span style="font-size:12px; background:#764ba2; color:#fff; padding:2px 8px; border-radius:8px;">CPU Node</span><br>
-          <span style="font-size:13px; color:#666;">Receives request • Checks: is a GPU pod running?</span>
-        </div>
-        <div style="text-align:center; color:#764ba2; font-size:24px; line-height:1;">▼</div>
+        <rect x="260" y="175" width="280" height="50" rx="10" fill="#e8e5f0" stroke="#764ba2" stroke-width="1.5" filter="url(#shadow)"/>
+        <text x="400" y="197" text-anchor="middle" fill="#302b63" font-size="12" font-weight="700">KEDA HTTP Interceptor</text>
+        <text x="400" y="213" text-anchor="middle" fill="#666" font-size="10">Receives request • Is GPU pod running?</text>
 
-        <!-- Decision -->
-        <div style="display:flex; justify-content:center; gap:24px; margin:8px 0; flex-wrap:wrap;">
-          <div style="background:#e8f9f0; border:2px solid #27ae60; padding:10px 20px; border-radius:10px; text-align:center; min-width:160px;">
-            <strong style="color:#1e7a45;">✅ Pod exists</strong><br>
-            <span style="font-size:13px; color:#2d6e3f;">Forward request instantly</span>
-          </div>
-          <div style="background:#fff3e0; border:2px solid #e67e22; padding:10px 20px; border-radius:10px; text-align:center; min-width:160px;">
-            <strong style="color:#d35400;">❌ No pod running</strong><br>
-            <span style="font-size:13px; color:#8b5e3c;">Hold request, scale up ▼</span>
-          </div>
-        </div>
-        <div style="text-align:center; color:#e67e22; font-size:24px; line-height:1;">▼</div>
+        <!-- Decision diamond -->
+        <line x1="400" y1="225" x2="400" y2="255" stroke="#764ba2" stroke-width="2" marker-end="url(#arrow)"/>
+        <polygon points="400,255 440,285 400,315 360,285" fill="#fff" stroke="#764ba2" stroke-width="1.5" filter="url(#shadow)"/>
+        <text x="400" y="289" text-anchor="middle" fill="#302b63" font-size="10" font-weight="600">Pod</text>
+        <text x="400" y="301" text-anchor="middle" fill="#302b63" font-size="10" font-weight="600">exists?</text>
 
-        <!-- Scale Up Chain -->
-        <div style="display:inline-block; background:#fff8e1; border:2px solid #f9a825; padding:12px 28px; border-radius:10px; margin:4px 0;">
-          <strong style="color:#e65100;">④ KEDA tells Kubernetes:</strong> "Scale GPU pod 0 → 1"
-        </div>
-        <div style="text-align:center; color:#e67e22; font-size:24px; line-height:1;">▼</div>
+        <!-- YES branch (left) -->
+        <line x1="360" y1="285" x2="240" y2="285" stroke="#27ae60" stroke-width="2" marker-end="url(#arrow-green)"/>
+        <rect x="85" y="267" width="155" height="38" rx="8" fill="#e8f9f0" stroke="#27ae60" stroke-width="1.5" filter="url(#shadow)"/>
+        <text x="162" y="283" text-anchor="middle" fill="#1e7a45" font-size="11" font-weight="700">✅ YES</text>
+        <text x="162" y="297" text-anchor="middle" fill="#2d6e3f" font-size="9">Forward instantly</text>
+        <!-- YES arrow down to GPU pod -->
+        <line x1="162" y1="305" x2="162" y2="620" stroke="#27ae60" stroke-width="1.5" stroke-dasharray="4,4"/>
+        <line x1="162" y1="620" x2="310" y2="620" stroke="#27ae60" stroke-width="1.5" marker-end="url(#arrow-green)" stroke-dasharray="4,4"/>
 
-        <div style="display:inline-block; background:#fff8e1; border:2px solid #f9a825; padding:12px 28px; border-radius:10px; margin:4px 0;">
-          <strong style="color:#e65100;">⑤ Cluster Autoscaler</strong> detects pending GPU pod → tells OCI to create <strong>VM.GPU.A10.1</strong>
-        </div>
-        <div style="text-align:center; color:#e67e22; font-size:24px; line-height:1;">▼</div>
+        <!-- NO branch (right) -->
+        <line x1="440" y1="285" x2="550" y2="285" stroke="#e67e22" stroke-width="2" marker-end="url(#arrow-orange)"/>
+        <rect x="550" y="267" width="175" height="38" rx="8" fill="#fff3e0" stroke="#e67e22" stroke-width="1.5" filter="url(#shadow)"/>
+        <text x="637" y="283" text-anchor="middle" fill="#d35400" font-size="11" font-weight="700">❌ NO</text>
+        <text x="637" y="297" text-anchor="middle" fill="#8b5e3c" font-size="9">Hold request, trigger scale-up</text>
 
-        <div style="display:inline-block; background:#e3f2fd; border:2px solid #1976d2; padding:12px 28px; border-radius:10px; margin:4px 0;">
-          <strong style="color:#0d47a1;">⑥ OCI provisions GPU server</strong> <span style="font-size:13px; color:#1565c0;">(~3-5 minutes)</span>
-        </div>
-        <div style="text-align:center; color:#1976d2; font-size:24px; line-height:1;">▼</div>
+        <!-- Arrow from NO to scale chain -->
+        <line x1="637" y1="305" x2="637" y2="335" stroke="#e67e22" stroke-width="2"/>
+        <line x1="637" y1="335" x2="400" y2="335" stroke="#e67e22" stroke-width="2"/>
+        <line x1="400" y1="335" x2="400" y2="355" stroke="#e67e22" stroke-width="2" marker-end="url(#arrow-orange)"/>
 
-        <div style="display:inline-block; background:#e3f2fd; border:2px solid #1976d2; padding:12px 28px; border-radius:10px; margin:4px 0;">
-          <strong style="color:#0d47a1;">⑦ GPU Operator</strong> auto-installs NVIDIA drivers on new server
-        </div>
-        <div style="text-align:center; color:#27ae60; font-size:24px; line-height:1;">▼</div>
+        <!-- KEDA Scale Command -->
+        <rect x="240" y="355" width="320" height="42" rx="8" fill="#fff8e1" stroke="#f9a825" stroke-width="1.5" filter="url(#shadow)"/>
+        <text x="400" y="374" text-anchor="middle" fill="#e65100" font-size="11" font-weight="600">KEDA → Kubernetes</text>
+        <text x="400" y="389" text-anchor="middle" fill="#bf7200" font-size="10">"Scale GPU pod:  0 → 1"</text>
 
-        <!-- GPU Pod Running -->
-        <div style="display:inline-block; background:linear-gradient(135deg,#d4f5e0,#a8e6cf); border:2px solid #27ae60; padding:16px 32px; border-radius:12px; margin:4px 0;">
-          <strong style="color:#1e7a45; font-size:16px;">⑧ GPU Pod Running</strong> <span style="font-size:12px; background:#27ae60; color:#fff; padding:2px 8px; border-radius:8px;">GPU Node</span><br>
-          <span style="font-size:13px; color:#2d6e3f;">Processes the request • Returns the response ✅</span>
-        </div>
-        <div style="text-align:center; color:#999; font-size:24px; line-height:1; margin-top:12px;">· · ·</div>
+        <!-- Arrow -->
+        <line x1="400" y1="397" x2="400" y2="420" stroke="#e67e22" stroke-width="2" marker-end="url(#arrow-orange)"/>
 
-        <!-- Scale Down -->
-        <div style="display:inline-block; background:#fce4ec; border:2px dashed #e53935; padding:12px 28px; border-radius:10px; margin:4px 0;">
-          <strong style="color:#c62828;">⑨ After 5 min idle</strong> → KEDA scales pod to 0 → Autoscaler removes GPU server → <strong style="color:#1e7a45;">cost = $0</strong>
-        </div>
+        <!-- ===== OCI CLOUD ZONE ===== -->
+        <rect x="40" y="415" width="720" height="135" rx="12" fill="none" stroke="#1976d2" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.5"/>
+        <rect x="50" y="407" width="130" height="20" rx="4" fill="#1976d2"/>
+        <text x="115" y="421" text-anchor="middle" fill="#fff" font-size="10" font-weight="600">☁️  OCI CLOUD</text>
 
-      </div>
+        <!-- Cluster Autoscaler -->
+        <rect x="140" y="435" width="260" height="42" rx="8" fill="#e3f2fd" stroke="#1976d2" stroke-width="1.5" filter="url(#shadow)"/>
+        <text x="270" y="454" text-anchor="middle" fill="#0d47a1" font-size="11" font-weight="600">Cluster Autoscaler</text>
+        <text x="270" y="469" text-anchor="middle" fill="#1565c0" font-size="9">Detects pending GPU pod</text>
 
-      <table style="margin-top:24px">
+        <line x1="400" y1="456" x2="430" y2="456" stroke="#1976d2" stroke-width="2" marker-end="url(#arrow)"/>
+
+        <!-- OCI Provision -->
+        <rect x="440" y="435" width="280" height="42" rx="8" fill="#e3f2fd" stroke="#1976d2" stroke-width="1.5" filter="url(#shadow)"/>
+        <text x="580" y="454" text-anchor="middle" fill="#0d47a1" font-size="11" font-weight="600">OCI provisions VM.GPU.A10.1</text>
+        <text x="580" y="469" text-anchor="middle" fill="#1565c0" font-size="9">~3-5 minutes • New GPU server</text>
+
+        <!-- GPU Operator -->
+        <rect x="240" y="495" width="320" height="42" rx="8" fill="#e3f2fd" stroke="#1976d2" stroke-width="1.5" filter="url(#shadow)"/>
+        <text x="400" y="514" text-anchor="middle" fill="#0d47a1" font-size="11" font-weight="600">NVIDIA GPU Operator</text>
+        <text x="400" y="529" text-anchor="middle" fill="#1565c0" font-size="9">Auto-installs drivers on new server</text>
+
+        <line x1="580" y1="477" x2="580" y2="500" stroke="#1976d2" stroke-width="1.5"/>
+        <line x1="580" y1="500" x2="560" y2="500" stroke="#1976d2" stroke-width="2" marker-end="url(#arrow)"/>
+
+        <!-- Arrow to GPU zone -->
+        <line x1="400" y1="537" x2="400" y2="575" stroke="#27ae60" stroke-width="2" marker-end="url(#arrow-green)"/>
+
+        <!-- ===== GPU NODE ZONE ===== -->
+        <rect x="40" y="570" width="720" height="90" rx="12" fill="none" stroke="#27ae60" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.5"/>
+        <rect x="50" y="562" width="140" height="20" rx="4" fill="#27ae60"/>
+        <text x="120" y="576" text-anchor="middle" fill="#fff" font-size="10" font-weight="600">🎮  GPU NODE</text>
+        <text x="190" y="576" fill="#27ae60" font-size="9" font-weight="500">  $2.00/hr on demand</text>
+
+        <!-- GPU Pod -->
+        <rect x="310" y="590" width="280" height="50" rx="12" fill="url(#gpuGrad)" stroke="#27ae60" stroke-width="2" filter="url(#shadow)"/>
+        <text x="450" y="613" text-anchor="middle" fill="#1e7a45" font-size="13" font-weight="700">🚀 GPU Pod — AI Model Running</text>
+        <text x="450" y="629" text-anchor="middle" fill="#2d6e3f" font-size="10">Processes request → Returns response</text>
+
+        <!-- Response arrow back -->
+        <rect x="300" y="668" width="200" height="36" rx="18" fill="url(#heroGrad)" filter="url(#shadow)"/>
+        <text x="400" y="691" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">⑨ Response → User ✅</text>
+        <line x1="400" y1="640" x2="400" y2="668" stroke="#764ba2" stroke-width="2" marker-end="url(#arrow)"/>
+
+        <!-- Scale-down annotation -->
+        <rect x="510" y="668" width="250" height="36" rx="8" fill="#fce4ec" stroke="#e53935" stroke-width="1.5" stroke-dasharray="4,3" filter="url(#shadow)"/>
+        <text x="635" y="684" text-anchor="middle" fill="#c62828" font-size="10" font-weight="600">5 min idle → scale to 0</text>
+        <text x="635" y="697" text-anchor="middle" fill="#e53935" font-size="10" font-weight="700">GPU cost = $0</text>
+
+        <!-- Step numbers along the right edge -->
+        <circle cx="770" cy="36" r="11" fill="#764ba2"/><text x="770" y="40" text-anchor="middle" fill="#fff" font-size="9" font-weight="700">①</text>
+        <circle cx="770" cy="112" r="11" fill="#764ba2"/><text x="770" y="116" text-anchor="middle" fill="#fff" font-size="9" font-weight="700">②</text>
+        <circle cx="770" cy="200" r="11" fill="#764ba2"/><text x="770" y="204" text-anchor="middle" fill="#fff" font-size="9" font-weight="700">③</text>
+        <circle cx="770" cy="376" r="11" fill="#e67e22"/><text x="770" y="380" text-anchor="middle" fill="#fff" font-size="9" font-weight="700">④</text>
+        <circle cx="770" cy="456" r="11" fill="#1976d2"/><text x="770" y="460" text-anchor="middle" fill="#fff" font-size="9" font-weight="700">⑤</text>
+        <circle cx="770" cy="516" r="11" fill="#1976d2"/><text x="770" y="520" text-anchor="middle" fill="#fff" font-size="9" font-weight="700">⑥</text>
+        <circle cx="770" cy="615" r="11" fill="#27ae60"/><text x="770" y="619" text-anchor="middle" fill="#fff" font-size="9" font-weight="700">⑦</text>
+      </svg>
+
+      <table style="margin-top:10px">
         <tr><th>Scenario</th><th>Response Time</th></tr>
         <tr><td><strong>Cold start</strong> (GPU is off)</td><td>~5–10 minutes (first request only)</td></tr>
         <tr><td><strong>Warm</strong> (GPU already running)</td><td>Instant (milliseconds)</td></tr>
