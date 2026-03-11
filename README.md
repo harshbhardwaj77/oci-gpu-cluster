@@ -99,8 +99,8 @@ Auto-refreshes every 5 seconds. Dark mode with NVIDIA green accents.
 
 | Component | Always Running? | Cost |
 |---|---|---|
-| CPU node (1× 1-OCPU Flex) | ✅ 24/7 | ~$25/mo |
-| GPU node (VM.GPU.A10.1) | ❌ On demand | ~$1.60/hr |
+| CPU node (1× 1-OCPU Flex) | ✅ 24/7 | ~$27/mo |
+| GPU node (VM.GPU.A10.1) | ❌ On demand | ~$2.00/hr |
 | OKE Control Plane | ✅ Managed | Free |
 
 With scale-to-zero, GPU costs are only incurred during active usage.

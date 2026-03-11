@@ -6,7 +6,7 @@
 
 ## 1. The Problem
 
-Running GPU servers 24/7 is extremely expensive. A single NVIDIA A10 GPU instance costs **~$1,152/month** if left running continuously. For AI workloads that only need GPUs when users are actively making requests, this is a massive waste.
+Running GPU servers 24/7 is extremely expensive. A single NVIDIA A10 GPU instance costs **~$1,440/month** if left running continuously. For AI workloads that only need GPUs when users are actively making requests, this is a massive waste.
 
 **Our solution:** A Kubernetes cluster that keeps GPU servers turned off when nobody is using them, and automatically boots them on-demand when a request arrives.
 
@@ -32,8 +32,8 @@ The cluster runs on **Oracle Cloud Infrastructure (OKE)** and consists of two se
 │   │   • KEDA Interceptor    │   │   • AI Model (Llama)    │    │
 │   │   • Cluster Autoscaler  │   │   • GPU Dashboard       │    │
 │   │   • GPU Operator Agent  │   │                         │    │
-│   │                         │   │   ⚡ Only runs when      │    │
-│   │   💰 ~$25/month         │   │   requests arrive       │    │
+│   │   💰 ~$27/month         │   │   ⚡ Only runs when      │    │
+│   │                         │   │   requests arrive       │    │
 │   └─────────────────────────┘   └─────────────────────────┘    │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
@@ -143,10 +143,10 @@ Here is exactly what happens when a user sends a request to the AI endpoint:
 
 A standard NGINX Ingress or load balancer would immediately return a **502 Bad Gateway** error if the GPU pod doesn't exist when a request arrives. KEDA's HTTP Add-on is special because it:
 
-1. **Buffers the request** — holds the HTTP connection open
-2. **Triggers the scale-up** — tells Kubernetes to create a GPU pod
-3. **Waits patiently** — keeps the user's connection alive while the GPU boots
-4. **Forwards the request** — once the pod is ready, delivers the original request seamlessly
+1.  **Buffers the request** — holds the HTTP connection open
+2.  **Triggers the scale-up** — tells Kubernetes to create a GPU pod
+3.  **Waits patiently** — keeps the user's connection alive while the GPU boots
+4.  **Forwards the request** — once the pod is ready, delivers the original request seamlessly
 
 The user simply sees a loading spinner for a few minutes, then gets their response — no errors, no retries needed.
 
@@ -156,35 +156,40 @@ The user simply sees a loading spinner for a few minutes, then gets their respon
 
 ### Always-On Costs (Fixed)
 
-| Component | Spec | Monthly Cost |
+| Component | Always Running? | Cost |
 |---|---|---|
-| CPU Node (control plane worker) | VM.Standard.E4.Flex, 1 OCPU, 8 GB | ~$25 |
-| OKE Cluster (Basic tier) | Managed Kubernetes control plane | **Free** |
-| OCI Load Balancer | Network Load Balancer (Always Free tier) | **Free** |
-| **Subtotal (fixed)** | | **~$25/month** |
+| CPU node (1× 1-OCPU E4.Flex) | ✅ 24/7 | ~$27/mo |
+| GPU node (VM.GPU.A10.1) | ❌ On demand | ~$2.00/hr |
+| OKE Cluster (Basic tier) | ✅ 24/7 | **Free** |
+| OCI Load Balancer | ✅ 24/7 | **Free** |
+| **Subtotal (fixed)** | | **~$27/month** |
+
+> **CPU Node cost breakdown:** OCPU: $0.025/hr × 1 × 720 hrs = $18 + Memory: $0.0015/hr × 8 GB × 720 hrs = $8.64 = **$26.64/month**
 
 ### On-Demand Costs (Variable — GPU)
 
 | Component | Spec | Hourly Cost | Usage Example |
 |---|---|---|---|
-| GPU Node | VM.GPU.A10.1 (1× A10, 24GB) | ~$1.60/hr | Scales to zero when idle |
+| GPU Node | VM.GPU.A10.1 (1× A10, 24GB) | ~$2.00/hr | Scales to zero when idle |
+
+> **Source:** [Oracle Cloud Compute Pricing](https://www.oracle.com/cloud/compute/pricing/)
 
 ### Usage Scenarios
 
 | Scenario | GPU Hours/Month | GPU Cost | Total Monthly |
 |---|---|---|---|
-| **Light** (2 hrs/day) | ~60 hrs | ~$96 | **~$121/month** |
-| **Moderate** (8 hrs/day, weekdays) | ~176 hrs | ~$282 | **~$307/month** |
-| **Heavy** (12 hrs/day, every day) | ~360 hrs | ~$576 | **~$601/month** |
-| **Always On** (24/7, no scaling) | 720 hrs | ~$1,152 | **~$1,177/month** |
+| **Light** (2 hrs/day) | ~60 hrs | ~$120 | **~$147/month** |
+| **Moderate** (8 hrs/day, weekdays) | ~176 hrs | ~$352 | **~$379/month** |
+| **Heavy** (12 hrs/day, every day) | ~360 hrs | ~$720 | **~$747/month** |
+| **Always On** (24/7, no scaling) | 720 hrs | ~$1,440 | **~$1,467/month** |
 
 ### Cost Savings vs Always-On
 
 ```
-   Always-On GPU:    $1,177/month  ████████████████████████████████████
-   Heavy (12hr/day):   $601/month  ██████████████████░░░░░░░░░░░░░░░░░  49% saved
-   Moderate (8hr):     $307/month  █████████░░░░░░░░░░░░░░░░░░░░░░░░░░  74% saved
-   Light (2hr/day):    $121/month  ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  90% saved
+   Always-On GPU:    $1,467/month  ████████████████████████████████████
+   Heavy (12hr/day):   $747/month  ██████████████████░░░░░░░░░░░░░░░░░  49% saved
+   Moderate (8hr):     $379/month  █████████░░░░░░░░░░░░░░░░░░░░░░░░░░  74% saved
+   Light (2hr/day):    $147/month  ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  90% saved
 ```
 
 > **Bottom line:** If the AI is not being used 24/7, scale-to-zero can save **50-90%** compared to leaving the GPU running continuously.
@@ -234,5 +239,5 @@ The user simply sees a loading spinner for a few minutes, then gets their respon
 | No 502 errors during cold start | ✅ (KEDA holds requests) |
 | Automatic GPU driver installation | ✅ (GPU Operator) |
 | Ready for Llama 3 8B inference | ✅ |
-| Monthly cost (light usage) | ~$121 |
+| Monthly cost (light usage) | ~$147 |
 | Monthly savings vs always-on | Up to 90% |
