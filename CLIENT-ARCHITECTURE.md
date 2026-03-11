@@ -218,7 +218,7 @@ The $27/month CPU node that manages all of this pays for itself within the **fir
 
 ---
 
-## 6. GPU Hardware: NVIDIA A10
+## 7. GPU Hardware: NVIDIA A10
 
 | Spec | Value |
 |---|---|
@@ -239,7 +239,7 @@ The $27/month CPU node that manages all of this pays for itself within the **fir
 
 ---
 
-## 7. Security
+## 8. Security
 
 | Aspect | Implementation |
 |---|---|
@@ -252,7 +252,7 @@ The $27/month CPU node that manages all of this pays for itself within the **fir
 
 ---
 
-## 8. Summary
+## 9. Summary
 
 | Feature | Status |
 |---|---|
