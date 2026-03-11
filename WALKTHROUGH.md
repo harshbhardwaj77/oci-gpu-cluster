@@ -192,6 +192,45 @@ User visits gpu.yourdomain.com
 
 **With scale-to-zero, GPU costs are only incurred during active usage.**
 
+## Next Steps: Deploying Llama for Production
+
+> **Important:** The current `install.sh` deploys a **GPU Dashboard test app** to verify that the scale-to-zero infrastructure works correctly. It does NOT deploy the actual Llama AI model.
+
+Once the GPU dashboard confirms everything is working (GPU node provisions, pod schedules, dashboard loads), you will need to:
+
+1. **Edit `install.sh`** — Replace Step 4 (GPU Dashboard deployment) with the Llama deployment. A ready-made manifest is already included at `k8s/vllm-llama-deployment.yaml`.
+
+2. **Get a Hugging Face token** — Llama models are gated. Sign up at [huggingface.co](https://huggingface.co), request access to `meta-llama/Llama-3.1-8B-Instruct`, and generate an API token.
+
+3. **Update the secret** — Replace `<YOUR_HUGGING_FACE_TOKEN>` in `k8s/vllm-llama-deployment.yaml` with your real token.
+
+4. **Deploy manually or via updated script:**
+
+```bash
+# Option A: Apply the Llama manifest directly
+kubectl apply -f k8s/vllm-llama-deployment.yaml
+
+# Option B: Integrate into install.sh by replacing the gpu-dashboard.yaml step
+```
+
+5. **Update the KEDA HTTPScaledObject** — Point it to the `vllm-llama` service in the `llm-inference` namespace instead of the `gpu-dashboard` service in `gpu-demo`.
+
+The `vllm-llama-deployment.yaml` manifest includes:
+- vLLM OpenAI-compatible API server serving Llama 3.1 8B
+- Persistent volume for model weight caching (50GB)
+- Init container that waits for NVIDIA drivers to be ready
+- Health/readiness probes with extended timeouts for model loading
+- Shared memory volume (8GB) required by vLLM
+
+**Llama Model Compatibility with VM.GPU.A10.1 (24GB VRAM):**
+
+| Model | Fits in 24GB? | Notes |
+|---|---|---|
+| Llama 3.1 8B (fp16) | ✅ Yes | ~16GB VRAM, fast inference |
+| Llama 3.1 8B (4-bit quantized) | ✅ Yes | ~6GB VRAM, even faster |
+| Llama 2 13B (8-bit quantized) | ✅ Yes | ~14GB VRAM |
+| Llama 3.1 70B | ❌ No | Needs ~140GB VRAM (8× A100) |
+
 ## Useful Commands
 
 ```bash
@@ -201,6 +240,9 @@ kubectl get nodes
 # Watch GPU app pods
 kubectl get pods -n gpu-demo -w
 
+# Watch Llama pods (once deployed)
+kubectl get pods -n llm-inference -w
+
 # Check autoscaler logs
 kubectl logs -n kube-system -l app=cluster-autoscaler --tail=50
 
@@ -209,4 +251,9 @@ kubectl get httpscaledobject -n gpu-demo
 
 # Get load balancer IP
 kubectl get svc keda-add-ons-http-interceptor-proxy -n keda
+
+# Test Llama API (once deployed)
+curl http://<LLAMA_SERVICE_IP>/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "meta-llama/Llama-3.1-8B-Instruct", "messages": [{"role": "user", "content": "Hello!"}]}'
 ```
