@@ -173,10 +173,18 @@ print_step "KEDA installed"
 # Install KEDA HTTP Add-on
 if helm status keda-http-addon -n keda &>/dev/null; then
     print_info "KEDA HTTP Add-on already installed, upgrading..."
-    helm upgrade keda-http-addon kedacore/keda-add-ons-http --namespace keda --wait --timeout 3m
+    helm upgrade keda-http-addon kedacore/keda-add-ons-http \
+        --namespace keda \
+        --set proxy.service.type=LoadBalancer \
+        --set interceptor.replicaCount=1 \
+        --set externalScaler.replicaCount=1 \
+        --wait --timeout 3m
 else
     helm install keda-http-addon kedacore/keda-add-ons-http \
         --namespace keda \
+        --set proxy.service.type=LoadBalancer \
+        --set interceptor.replicaCount=1 \
+        --set externalScaler.replicaCount=1 \
         --wait --timeout 3m
 fi
 print_step "KEDA HTTP Add-on installed"
