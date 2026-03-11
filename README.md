@@ -33,8 +33,7 @@ GPU-accelerated Kubernetes on **Oracle Cloud (OKE)** with GPU nodes that **auto-
 2. **OKE Cluster** created via OCI Console (see [WALKTHROUGH.md](WALKTHROUGH.md))
 3. **CPU node pool** (1 node, `VM.Standard.E4.Flex`, 1 OCPU, 8 GB)
 4. **GPU node pool** (0 nodes, `VM.GPU.A10.1`)
-5. `kubectl`, `helm`, and `docker` installed locally
-
+5. `kubectl` and `helm` installed locally (e.g., in OCI Cloud Shell)
 ## Quick Start
 
 ```bash
@@ -56,7 +55,7 @@ The install script will:
 - ✅ Install NVIDIA GPU Operator
 - ✅ Deploy Cluster Autoscaler (GPU pool 0→3)
 - ✅ Install KEDA + HTTP Add-on
-- ✅ Build & deploy GPU Dashboard app
+- ✅ Deploy GPU Dashboard app via ConfigMaps (Zero Docker Build)
 - ✅ Print DNS setup instructions
 
 ## Project Structure
