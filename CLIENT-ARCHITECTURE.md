@@ -183,16 +183,104 @@ The user simply sees a loading spinner for a few minutes, then gets their respon
 | **Heavy** (12 hrs/day, every day) | ~360 hrs | ~$720 | **~$747/month** |
 | **Always On** (24/7, no scaling) | 720 hrs | ~$1,440 | **~$1,467/month** |
 
-### Cost Savings vs Always-On
+---
+
+## 6. 💰 Savings — Why Scale-to-Zero Changes Everything
+
+This is the core value proposition of our architecture. Instead of paying for a GPU server that sits idle 80-95% of the time, **you only pay for the minutes the GPU is actually processing requests.**
+
+### The Traditional Approach vs Our Approach
 
 ```
-   Always-On GPU:    $1,467/month  ████████████████████████████████████
-   Heavy (12hr/day):   $747/month  ██████████████████░░░░░░░░░░░░░░░░░  49% saved
-   Moderate (8hr):     $379/month  █████████░░░░░░░░░░░░░░░░░░░░░░░░░░  74% saved
-   Light (2hr/day):    $147/month  ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  90% saved
+  ┌─────────────────────────────────────────────────────────────────┐
+  │                                                                 │
+  │   ❌ TRADITIONAL: GPU server running 24/7                       │
+  │   ═══════════════════════════════════════════                    │
+  │   $1,440/month GPU + $27 CPU = $1,467/month                    │
+  │   GPU is IDLE 80-95% of the time                                │
+  │   You pay the same whether 0 or 1000 users are online           │
+  │                                                                 │
+  │   ✅ OUR SOLUTION: GPU scales to zero automatically             │
+  │   ═══════════════════════════════════════════                    │
+  │   $27/month fixed + GPU only when needed                        │
+  │   GPU cost = $0 during nights, weekends, idle periods           │
+  │   You pay ONLY for actual AI processing time                    │
+  │                                                                 │
+  └─────────────────────────────────────────────────────────────────┘
 ```
 
-> **Bottom line:** If the AI is not being used 24/7, scale-to-zero can save **50-90%** compared to leaving the GPU running continuously.
+### Monthly Cost Comparison
+
+```
+  Monthly Cost ($)
+  │
+  $1,467 ┤ ████████████████████████████████████████  ← Always-On (no scaling)
+         │
+    $747 ┤ ████████████████████░░░░░░░░░░░░░░░░░░░░  ← Heavy Use (12hr/day)
+         │                                              YOU SAVE $720/mo (49%)
+    $379 ┤ ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ← Moderate (8hr weekdays)
+         │                                              YOU SAVE $1,088/mo (74%)
+    $147 ┤ ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ← Light Use (2hr/day)
+         │                                              YOU SAVE $1,320/mo (90%)
+     $27 ┤ █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ← Idle (no users at all)
+         │                                              YOU SAVE $1,440/mo (98%)
+         └──────────────────────────────────────────
+```
+
+### Annual Savings Projection
+
+| Scenario | Monthly Cost | Annual Cost | Annual Savings vs Always-On | % Saved |
+|---|---|---|---|---|
+| **Always-On** (no scaling) | $1,467 | **$17,604** | — | — |
+| **Heavy** (12hr/day, every day) | $747 | **$8,964** | **$8,640** saved | 49% |
+| **Moderate** (8hr/day, weekdays) | $379 | **$4,548** | **$13,056** saved | 74% |
+| **Light** (2hr/day) | $147 | **$1,764** | **$15,840** saved | 90% |
+| **Weekends off** (8hr, Mon-Fri only) | $347 | **$4,164** | **$13,440** saved | 76% |
+
+### Real-World Usage Examples
+
+**Example 1: Internal Business Tool**
+> Your team of 15 people uses the AI chatbot during business hours (9 AM – 5 PM, Sunday–Thursday).
+> The GPU runs ~8 hours/day, 22 days/month = **176 GPU hours**.
+>
+> - Traditional (always-on): **$17,604/year**
+> - With scale-to-zero: **$4,548/year**
+> - **You save: $13,056/year** ✅
+
+**Example 2: Customer-Facing API with Occasional Traffic**
+> Your app receives AI requests sporadically — maybe 2-3 hours of real GPU usage per day on average.
+>
+> - Traditional (always-on): **$17,604/year**
+> - With scale-to-zero: **$1,764/year**
+> - **You save: $15,840/year** ✅
+
+**Example 3: Development & Testing**
+> Your developers test the AI model a few times per week, totaling ~10 hours/month of GPU usage.
+>
+> - Traditional (always-on): **$17,604/year**
+> - With scale-to-zero: **$564/year** ($27 fixed + $20 GPU)
+> - **You save: $17,040/year** ✅
+
+### What Happens During Off-Hours?
+
+```
+  ┌──────────────────────────────────────────────────────────┐
+  │  24-Hour Cost Timeline (Business Hours Usage)            │
+  │                                                          │
+  │  12AM ░░░░░░░░ 6AM ░░ 8AM ████████████ 5PM ░░░░░░ 12AM │
+  │       sleeping        │  GPU running  │  GPU off         │
+  │       GPU cost: $0    │  GPU: $2/hr   │  GPU cost: $0    │
+  │                       │  = $18 today  │                  │
+  │                       │               │                  │
+  │  Without scaling: $48/day ($2 × 24hr)                    │
+  │  With scaling:    $18/day ($2 × 9hr)                     │
+  │  Daily savings:   $30/day                                │
+  └──────────────────────────────────────────────────────────┘
+```
+
+### The Bottom Line
+
+> **If the GPU is not being used 24/7, our scale-to-zero architecture saves between $8,640 and $17,040 per year** — depending on actual usage patterns. The infrastructure cost to enable this (the $27/month CPU node running KEDA) pays for itself within the **first 14 hours** of GPU time saved.
 
 ---
 
